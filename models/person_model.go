@@ -9,6 +9,7 @@ import (
 
 type PersonInfo struct {
 	Name        string `json:"name"`
+	Age         int    `json:"age"`
 	PhoneNumber string `json:"phone_number"`
 	City        string `json:"city"`
 	State       string `json:"state"`
@@ -24,7 +25,7 @@ func RetrievePerson(personID int) (*PersonInfo, error) {
 	personInfo := new(PersonInfo)
 	query := `
 		SELECT 
-            p.name, ph.number, a.city, a.state, a.street1, a.street2, a.zip_code
+            p.name, p.age, ph.number, a.city, a.state, a.street1, a.street2, a.zip_code
         FROM 
             person p
         JOIN 
@@ -52,7 +53,21 @@ func (personInfo *PersonInfo) Save() error {
 	}
 
 	var personID int
-	err = tx.QueryRow("INSERT INTO person (name, age) VALUES ($1, 0) RETURNING id", personInfo.Name).Scan(&personID)
+	if database.DriverName == "mysql" {
+		res, err := tx.Exec("INSERT INTO person (name, age) VALUES (?, 0)", personInfo.Name)
+		if err == nil {
+			personID64, errID := res.LastInsertId()
+			if errID == nil {
+				rollBackErr := tx.Rollback()
+				if rollBackErr != nil {
+					return errors.New("failed to rollback transaction: " + errID.Error())
+				}
+			}
+			personID = int(personID64)
+		}
+	} else {
+		err = tx.QueryRow("INSERT INTO person (name, age) VALUES ($1, $2) RETURNING id", personInfo.Name, personInfo.Age).Scan(&personID)
+	}
 	if err != nil {
 		rollBackErr := tx.Rollback()
 		if rollBackErr != nil {
@@ -71,8 +86,23 @@ func (personInfo *PersonInfo) Save() error {
 	}
 
 	var addressID int
-	err = tx.QueryRow("INSERT INTO address (city, state, street1, street2, zip_code) VALUES ($1, $2, $3, $4, $5) RETURNING id",
-		personInfo.City, personInfo.State, personInfo.Street1, personInfo.Street2, personInfo.ZipCode).Scan(&addressID)
+	if database.DriverName == "mysql" {
+		res, err := tx.Exec("INSERT INTO address (city, state, street1, street2, zip_code) VALUES (?, ?, ?, ?, ?)",
+			personInfo.City, personInfo.State, personInfo.Street1, personInfo.Street2, personInfo.ZipCode)
+		if err == nil {
+			addressID64, errID := res.LastInsertId()
+			if errID == nil {
+				rollBackErr := tx.Rollback()
+				if rollBackErr != nil {
+					return errors.New("failed to rollback transaction: " + errID.Error())
+				}
+			}
+			addressID = int(addressID64)
+		}
+	} else {
+		err = tx.QueryRow("INSERT INTO address (city, state, street1, street2, zip_code) VALUES ($1, $2, $3, $4, $5) RETURNING id",
+			personInfo.City, personInfo.State, personInfo.Street1, personInfo.Street2, personInfo.ZipCode).Scan(&addressID)
+	}
 	if err != nil {
 		rollBackErr := tx.Rollback()
 		if rollBackErr != nil {
