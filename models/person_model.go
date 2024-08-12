@@ -3,8 +3,9 @@ package models
 import (
 	"database/sql"
 	"errors"
-	"github.com/Abhishek-Mali-Simform/assessments/database"
 	"strconv"
+
+	"github.com/Abhishek-Mali-Simform/assessments/database"
 )
 
 type PersonInfo struct {
@@ -36,7 +37,7 @@ func RetrievePerson(personID int) (*PersonInfo, error) {
             address a ON aj.address_id = a.id
         WHERE 
             p.id =` + strconv.Itoa(personID)
-	err := database.DB.QueryRow(query).Scan(&personInfo.Name, &personInfo.PhoneNumber, &personInfo.City, &personInfo.State, &personInfo.Street1, &personInfo.Street2, &personInfo.ZipCode)
+	err := database.DB.QueryRow(query).Scan(&personInfo.Name, &personInfo.Age, &personInfo.PhoneNumber, &personInfo.City, &personInfo.State, &personInfo.Street1, &personInfo.Street2, &personInfo.ZipCode)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, errors.New("person not found")
@@ -57,7 +58,7 @@ func (personInfo *PersonInfo) Save() error {
 		res, err := tx.Exec("INSERT INTO person (name, age) VALUES (?, 0)", personInfo.Name)
 		if err == nil {
 			personID64, errID := res.LastInsertId()
-			if errID == nil {
+			if errID != nil {
 				rollBackErr := tx.Rollback()
 				if rollBackErr != nil {
 					return errors.New("failed to rollback transaction: " + errID.Error())
@@ -75,8 +76,13 @@ func (personInfo *PersonInfo) Save() error {
 		}
 		return errors.New("failed to insert person: " + err.Error())
 	}
-
-	_, err = tx.Exec("INSERT INTO phone (number, person_id) VALUES ($1, $2)", personInfo.PhoneNumber, personID)
+	phoneQuery := "INSERT INTO phone (number, person_id) VALUES "
+	if database.DriverName == "mysql" {
+		phoneQuery += "(?, ?)"
+	} else {
+		phoneQuery += "($1, $2)"
+	}
+	_, err = tx.Exec(phoneQuery, personInfo.PhoneNumber, personID)
 	if err != nil {
 		rollBackErr := tx.Rollback()
 		if rollBackErr != nil {
@@ -91,7 +97,7 @@ func (personInfo *PersonInfo) Save() error {
 			personInfo.City, personInfo.State, personInfo.Street1, personInfo.Street2, personInfo.ZipCode)
 		if err == nil {
 			addressID64, errID := res.LastInsertId()
-			if errID == nil {
+			if errID != nil {
 				rollBackErr := tx.Rollback()
 				if rollBackErr != nil {
 					return errors.New("failed to rollback transaction: " + errID.Error())
@@ -111,7 +117,14 @@ func (personInfo *PersonInfo) Save() error {
 		return errors.New("failed to insert address: " + err.Error())
 	}
 
-	_, err = tx.Exec("INSERT INTO address_join (person_id, address_id) VALUES ($1, $2)", personID, addressID)
+	addressJoinQuery := "INSERT INTO address_join (person_id, address_id) VALUES "
+	if database.DriverName == "mysql" {
+		addressJoinQuery += "(?, ?)"
+	} else {
+		addressJoinQuery += "($1, $2)"
+	}
+
+	_, err = tx.Exec(addressJoinQuery, personID, addressID)
 	if err != nil {
 		rollBackErr := tx.Rollback()
 		if rollBackErr != nil {
